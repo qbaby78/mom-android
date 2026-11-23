@@ -1,0 +1,58 @@
+---
+description: Modern Android Development Rules (MVVM + MVI, Compose, Coroutines, Hilt, JUnit5)
+globs: **/*.kt, **/*.kts
+---
+
+# Android Architecture & Coding Standards (MVVM + MVI)
+
+## 1. Core Tech Stack
+- **Language**: Kotlin (Strict null-safety, immutability first)
+- **Architecture**: MVVM + MVI (Unidirectional Data Flow)
+- **UI Framework**: Jetpack Compose & Jetpack Navigation (Type-safe Navigation)
+- **Async & Concurrency**: Kotlin Coroutines & Flow (`StateFlow`, `SharedFlow`)
+- **Network**: Retrofit2 + OkHttp3 + `kotlinx.serialization`
+- **Database**: Room
+- **DI**: Hilt
+- **Testing**: JUnit4 + JUnit5 (JUnit Jupiter) + MockK + Turbine (for Flow testing)
+
+---
+
+## 2. Architecture & MVI Pattern Guidelines
+- **Unidirectional Data Flow (UDF)**:
+  - **Intent**: User actions or system events passed from UI to ViewModel (e.g., `sealed interface MainIntent`).
+  - **UiState**: Immutable UI state emitted by ViewModel via `StateFlow<UiState>` (e.g., `data class MainUiState(...)`).
+  - **Single-Live-Event / Effect**: One-off UI events (navigation, snackbars) handled via `SharedFlow` or `Channel` (e.g., `sealed interface MainEffect`).
+- **ViewModel Responsibilities**:
+  - Expose `uiState: StateFlow<UiState>` and `effect: SharedFlow<UiEffect>`.
+  - Provide a single entry point function: `fun onIntent(intent: UiIntent)` to process all incoming user actions.
+- **Separation of Concerns**:
+  - ViewModels must **never** reference Android Context or Compose UI objects.
+  - Business logic belongs in UseCases (Domain layer); data handling belongs in Repositories (Data layer).
+
+---
+
+## 3. Jetpack Compose & Navigation Rules
+- **State Hoisting**: Keep Composables stateless; hoist state and event callbacks to parent screens or ViewModels.
+- **Modifiers**: Always pass `modifier: Modifier = Modifier` as the first optional parameter to custom Composables.
+- **Previews**: Provide `@Preview` annotations with mock data for reusable UI components.
+- **Navigation**: Use Jetpack Navigation with type-safe arguments (`kotlinx.serialization` based routes).
+
+---
+
+## 4. Coroutines, Flow & Network Rules
+- **Coroutines Scope**: Always use `viewModelScope` inside ViewModels. Never use `GlobalScope`.
+- **Flow Operators**: Prefer Kotlin Flow operators (`map`, `filter`, `combine`, `stateIn`) with proper `SharingStarted.WhileSubscribed(5000)`.
+- **Serialization**: Use `@Serializable` data classes with `kotlinx.serialization` for Retrofit response models and JSON parsing.
+
+---
+
+## 5. Testing Guidelines (JUnit5)
+- **Framework**: Use **JUnit 5 (`org.junit.jupiter.api.*`)** for all unit tests.
+- **Naming**: Test methods must follow descriptive naming conventions (e.g., `given [condition] when [action] then [expected result]`).
+- **Coroutines Testing**: Use `StandardTestDispatcher` / `UnconfinedTestDispatcher` and Turbine to test `StateFlow` and `SharedFlow`.
+
+---
+
+## 6. Output & Response Guidelines
+- Provide clear **English code comments** and concise **Korean explanations** for code changes.
+- Ensure all generated code complies strictly with the MVI state-reduction pattern.

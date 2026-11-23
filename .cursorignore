@@ -1,0 +1,14 @@
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+captures/
+.externalNativeBuild/
+
+# Local machine config
+local.properties

@@ -1,0 +1,117 @@
+# Mom (Taking Care Of My Child) - 요구사항 명세서
+
+## 1. 개요 및 목적
+- **앱 명칭:** Mom (Taking Care Of My Child)
+- **핵심 목표:** 아이의 위치를 주기적으로 감지하여 부모가 설정한 관심 지역(지오펜스) 이탈 시 알림을 제공하는 안전 관리 애플리케이션
+- **개발 전략:** 단계별 확장을 고려하여 Phase 1(데모 및 핵심 아키텍처 검증), Phase 2(실제 서버 연동 및 정식 분리), Phase 3(기능 확장)로 나누어 진행
+
+---
+
+## 2. Phase 1 구현 및 테스트 제약사항 (합의안 반영)
+
+### 2.1 앱 구조 및 구동 방식
+- **단일 앱 내 모드 전환 방식:** Phase 1에서는 부모 App과 아이 App을 별도 APK로 분리하지 않고, 하나의 Android 프로젝트 내에서 부모 모드 / 아이 모드로 전환하여 구동 및 테스트 진행
+- **모듈/패키지 분리:** Phase 2에서 부모용 앱과 아이용 앱으로 손쉽게 분리할 수 있도록 내부 패키지 및 의존성 경계를 명확하게 구분 (`domain`, `data`, `feature/parent`, `feature/child`, `core`)
+
+### 2.2 가상 서버 DB 및 데이터 소스 추상화
+- **RemoteDataSource 추상화:** Repository는 `LocalDataSource`와 `RemoteDataSource` 인터페이스를 거치도록 설계
+- **서버 DB 모사:** Phase 1에서는 실제 백엔드 서버를 구축하지 않는 대신 `RemoteDataSource`의 구현체로 **서버 DB 역할의 Room DB (`LocalServerDbRemoteDataSource`)**를 Hilt로 주입하여 사용
+- **Phase 2 준비:** Phase 2 전환 시 API 및 네트워크 구현체(`RetrofitRemoteDataSource`)로 교체해도 Domain, UseCase, ViewModel, JUnit5 단위 테스트 영향 최소화
+
+### 2.3 아이 모드 백그라운드 동작 및 위반 판정 규칙
+- **실행 메커니즘:** 아이 모드 활성화 시 사용자용 복잡한 설정 화면 없이 백그라운드 **Foreground Service + Coroutine 루프** 기반으로 주기적 위치 수집 수행
+- **수동 테스트 트리거:** 에뮬레이터 및 실기기 검증 편의성을 위해 1회 수동 위치 수집 및 위반 체크를 즉시 실행할 수 있는 디버그/테스트용 트랜잭션 제공
+- **위반 판정 및 알람 중복 방지:**
+  - 중심 좌표(위경도)와 수집 위치 간 거리를 Haversine 공식 또는 Android Location API 기반으로 계산하여 반경(km) 초과 시 이탈로 판정
+  - 동일 이탈 상태 지속 시 알람이 과도하게 연속 생성되지 않도록 **위반 상태 진입 시 1회 기록 (또는 쿨다운 타임 적용)** 규칙 적용
+
+---
+
+## 3. 주요 도메인 엔티티 및 데이터 관계
+
+1. **Child (아이)**
+   - `id`: String / Long
+   - `name`: String
+2. **Interest / GeofenceRule (관심 - 지오펜스)**
+   - `id`: String / Long
+   - `childId`: String / Long (Child와 1:N 관계)
+   - `name`: String
+   - `type`: Enum / String (Phase 1 기준 `GEOFENCE`)
+   - `latitude`: Double
+   - `longitude`: Double
+   - `radiusKm`: Double
+   - `intervalMinutes`: Int (위치 수집 및 검사 주기)
+3. **AlertHistory / ViolationLog (알람 이력)**
+   - `id`: String / Long
+   - `childId`: String / Long
+   - `childName`: String
+   - `interestId`: String / Long
+   - `interestName`: String
+   - `occurredAt`: Long (타임스탬프)
+   - `measuredLatitude`: Double
+   - `measuredLongitude`: Double
+   - `distanceKm`: Double
+
+---
+
+## 4. UI 화면 및 화면별 세부 기능 (부모 App / 모드)
+
+### 4.1 아이 관리 화면
+- 등록된 아이 목록 표시
+- 신규 아이 등록 기능 (+ 대표 아이콘/프로필)
+- 아이 항목 클릭 시 해당 아이의 정보 등록 및 수정 화면으로 이동
+
+### 4.2 아이 정보 등록 및 수정 화면
+- 아이 이름 수정
+- 아이에게 연결된 관심(지오펜스) 리스트 표시 (1:N 관계)
+- 관심 추가 / 편집 / 삭제 버튼 및 화면 이동
+
+### 4.3 관심 등록 및 수정 화면
+- 관심 이름 입력
+- 관심 타입 선택 (DropdownMenu, 현재는 `GEOFENCE` 전용)
+- 지정된 지역 위치 및 설정된 반경(km) 정보 요약 표시
+- 알림 주기 설정 (분 단위 - 아이의 위치 수집 주기)
+
+### 4.4 지역 설정 화면
+- 지도를 통해 중심 위치(Point) 선택
+- 반경(km) 설정 및 지도 상에 설정 영역(원) 프리뷰/추산 표시
+
+### 4.5 알람 이력 화면
+- 언제, 어떤 아이에게서, 어떤 관심 지역이 위반되었는지 이력 목록 표시
+- **Flow 실시간 구독:** 아이 모드 백그라운드 서비스에서 서버 DB에 새 이력을 기록하면 부모 화면에 실시간으로 즉시 반영
+
+### 4.6 Navigation Drawer (ModalNavigationDrawer)
+- 아이 관리 화면 이동
+- 알람 이력 화면 이동
+
+---
+
+## 5. Phase별 개발 로드맵
+
+- **Phase 1 (Demo / 현 단계)**
+  - 단일 앱 내 부모/아이 모드 전환 구동
+  - 서버 DB 역할을 하는 Room DB 기반 `RemoteDataSource` 활용
+  - 지오펜스 설정 및 백그라운드 위반 판정, 실시간 알람 이력 Flow 구독
+  - 핵심 비즈니스 로직(위치 판정, UseCase 등) JUnit5 단위 테스트 작성
+- **Phase 2 (정식 버전)**
+  - 부모 App과 아이 App 별도 APK/앱으로 완전 분리
+  - 실제 백엔드 서버 연동 (Retrofit2 + OkHttp3 + kotlinx.serialization)
+  - FCM(Firebase Cloud Messaging) 기반 푸시 알람 구현
+- **Phase 3 (기능 확장 버전)**
+  - 아이 정보 확장 (학년, 특이사항 등)
+  - 공부(Todo) 체크 기능
+  - 스케줄 체크 기능
+  - 안전 체크 기능 (카메라 활성화 후 사진/영상 원격 촬영)
+
+---
+
+## 6. 사용 기술 스택
+
+- **Architecture:** Modern Android Development (MAD) 기반 MVVM + MVI
+- **Language:** Kotlin
+- **UI Framework:** Android Jetpack Compose, Jetpack Navigation Compose
+- **Async & Reactive:** Kotlin Coroutines, StateFlow / SharedFlow
+- **Network:** Retrofit2, OkHttp3, kotlinx.serialization (Phase 2 호환)
+- **Database:** Room (로컬 캐시 DB 및 Phase 1 서버 모사 DB)
+- **Dependency Injection:** Hilt
+- **Testing:** JUnit5, MockK / Fake implementations
