@@ -1,6 +1,7 @@
 ---
 description: Modern Android Development Rules (MVVM + MVI, Compose, Coroutines, Hilt, JUnit5)
 globs: **/*.kt, **/*.kts
+alwaysApply: true
 ---
 
 # Android Architecture & Coding Standards (MVVM + MVI)
